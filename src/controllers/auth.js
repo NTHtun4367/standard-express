@@ -55,3 +55,63 @@ export const registerController = async (req, res) => {
     fs.unlinkSync(cover_photo_path);
   }
 };
+
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const existingUser = await User.findById(userId);
+
+    if (!existingUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const accessToken = existingUser.generateAccessToken();
+    const refreshToken = existingUser.generateRefreshToken();
+
+    existingUser.refresh_token = refreshToken;
+    await existingUser.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+};
+
+export const loginController = async (req, res) => {
+  const { username, email, password } = req.body;
+
+  if (!username || !email || !password) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+
+  if (!existingUser) {
+    return res.status(404).json({ message: "User not found." });
+  }
+
+  const isPassMatch = await existingUser.isPasswordMatch(password);
+
+  if (!isPassMatch) {
+    return res.status(401).json({ message: "Invalid credentials." });
+  }
+
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    existingUser._id
+  );
+
+  const loginUser = await User.findById(existingUser._id).select(
+    "-password -refresh_token"
+  );
+
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json({ user: loginUser, message: "Login success." });
+};
