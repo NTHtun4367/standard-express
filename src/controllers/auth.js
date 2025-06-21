@@ -161,3 +161,31 @@ export const generateNewRefreshToken = async (req, res) => {
     return res.status(500).json({ message: "Something went wrong." });
   }
 };
+
+export const logoutController = async (req, res) => {
+  if (!req.user || !req.user._id) {
+    return res.status(401).json({ message: "Logout Unauthorized." });
+  }
+
+  try {
+    await User.findByIdAndUpdate(
+      req.user._id,
+      { $unset: { refresh_token: 1 } },
+      { new: true }
+    );
+
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    return res
+      .status(200)
+      .clearCookie("accessToken", options)
+      .clearCookie("refreshToken", options)
+      .json({ message: `${req.user.username} logout successfully.` });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Something went wrong in LogoutController" });
+  }
+};
